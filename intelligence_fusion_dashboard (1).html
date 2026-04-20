@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STRATFUSE — Intelligence Fusion Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-deep:#050d14;--bg-panel:#091520;--bg-card:#0d1e2d;--bg-hover:#122334;
+  --border:#1a3a52;--border-hi:#1e5a7a;
+  --accent:#00d4ff;--accent2:#00ff99;--accent3:#ff6b35;
+  --danger:#ff3b5c;--warn:#ffc837;
+  --text-pri:#e0f4ff;--text-sec:#6a9ab8;--text-dim:#2a5470;
+  --osint:#00d4ff;--humint:#00ff99;--imint:#ff6b35;--estimated:#ffc837;
+  --font-mono:'Share Tech Mono',monospace;--font-head:'Rajdhani',sans-serif;--font-body:'Exo 2',sans-serif;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg-deep);color:var(--text-pri);font-family:var(--font-body)}
+
+/* LAYOUT */
+#app{display:grid;grid-template-rows:52px 36px 1fr;grid-template-columns:280px 1fr 300px;height:100vh}
+
+/* TOPBAR */
+#topbar{
+  grid-column:1/-1;grid-row:1;
+  display:flex;align-items:center;gap:20px;
+  background:var(--bg-panel);border-bottom:1px solid var(--border);padding:0 20px;position:relative;
+}
+#topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scanline 4s linear infinite}
+@keyframes scanline{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+.logo{font-family:var(--font-head);font-size:22px;font-weight:700;letter-spacing:4px;color:var(--accent)}
+.logo span{color:var(--text-sec);font-weight:400;font-size:12px;letter-spacing:2px;margin-left:8px}
+.topbar-status{display:flex;gap:20px;margin-left:auto;font-family:var(--font-mono);font-size:11px}
+.ts-item{display:flex;align-items:center;gap:6px;color:var(--text-sec)}
+.ts-dot{width:6px;height:6px;border-radius:50%;background:var(--accent2);box-shadow:0 0 6px var(--accent2);animation:pulse 2s ease-in-out infinite}
+.ts-dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#clock{font-family:var(--font-mono);font-size:13px;color:var(--accent);min-width:80px;text-align:right}
+
+/* THREAT BAR */
+#threat-bar{
+  grid-column:1/-1;grid-row:2;
+  display:flex;align-items:center;gap:12px;
+  background:var(--bg-deep);border-bottom:1px solid var(--border);padding:0 16px;
+}
+.tl-label{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;white-space:nowrap}
+.tl-segments{display:flex;gap:3px;width:180px}
+.tl-seg{flex:1;height:13px;border-radius:2px;background:var(--bg-card);border:1px solid var(--border);transition:all .4s ease}
+.tl-seg.L1{background:#00d4ff;border-color:#00d4ff;box-shadow:0 0 5px #00d4ff88}
+.tl-seg.L2{background:#00ff99;border-color:#00ff99;box-shadow:0 0 5px #00ff9988}
+.tl-seg.L3{background:#ffc837;border-color:#ffc837;box-shadow:0 0 5px #ffc83788}
+.tl-seg.L4{background:#ff6b35;border-color:#ff6b35;box-shadow:0 0 5px #ff6b3588}
+.tl-seg.L5{background:#ff3b5c;border-color:#ff3b5c;box-shadow:0 0 8px #ff3b5c;animation:threatBlink .8s ease-in-out infinite}
+@keyframes threatBlink{0%,100%{opacity:1}50%{opacity:.4}}
+#tl-name{font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:2px;min-width:90px}
+#tl-score{font-family:var(--font-mono);font-size:10px;color:var(--text-sec);min-width:70px}
+.vdiv{width:1px;height:20px;background:var(--border)}
+/* search */
+#search-wrap{display:flex;align-items:center;gap:8px;flex:1;max-width:340px}
+#search-icon{font-family:var(--font-mono);font-size:13px;color:var(--text-dim)}
+#search-input{
+  flex:1;background:var(--bg-card);border:1px solid var(--border);
+  color:var(--text-pri);font-family:var(--font-mono);font-size:11px;
+  padding:4px 10px;border-radius:3px;outline:none;transition:border-color .2s;
+}
+#search-input:focus{border-color:var(--accent)}
+#search-input::placeholder{color:var(--text-dim)}
+#search-count{font-family:var(--font-mono);font-size:10px;color:var(--text-sec);white-space:nowrap;min-width:70px}
+/* class pills */
+.cpills{display:flex;gap:3px}
+.cpill{
+  padding:2px 8px;border:1px solid var(--border);border-radius:2px;
+  font-family:var(--font-mono);font-size:9px;color:var(--text-sec);
+  cursor:pointer;transition:all .15s;background:transparent;
+}
+.cpill:hover{border-color:var(--accent);color:var(--accent)}
+.cpill.on{background:rgba(0,212,255,.1);border-color:var(--accent);color:var(--accent)}
+/* export btn */
+#export-btn{
+  padding:4px 14px;border:1px solid var(--accent2);
+  background:rgba(0,255,153,.08);color:var(--accent2);
+  font-family:var(--font-mono);font-size:10px;letter-spacing:1px;
+  cursor:pointer;border-radius:3px;transition:all .2s;white-space:nowrap;margin-left:auto;
+}
+#export-btn:hover{background:rgba(0,255,153,.18)}
+
+/* LEFT PANEL */
+#left-panel{
+  grid-column:1;grid-row:3;
+  background:var(--bg-panel);border-right:1px solid var(--border);
+  overflow-y:auto;display:flex;flex-direction:column;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.panel-section{border-bottom:1px solid var(--border);padding:14px 16px}
+.panel-label{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:3px;
+  color:var(--text-dim);text-transform:uppercase;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+.panel-label::before{content:'';flex:1;height:1px;background:var(--border)}
+.source-toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 10px;border-radius:4px;cursor:pointer;margin-bottom:4px;
+  border:1px solid transparent;transition:all .2s;
+  font-family:var(--font-head);font-size:14px;font-weight:600;
+}
+.source-toggle:hover{background:var(--bg-hover);border-color:var(--border-hi)}
+.source-toggle.active{border-color:var(--border-hi)}
+.src-info{display:flex;align-items:center;gap:8px}
+.src-dot{width:8px;height:8px;border-radius:50%}
+.src-count{font-family:var(--font-mono);font-size:11px;color:var(--text-sec)}
+.tpill{width:28px;height:14px;border-radius:7px;background:var(--bg-deep);border:1px solid var(--border);position:relative;transition:background .2s}
+.tpill.on{background:var(--accent);border-color:var(--accent)}
+.tpill::after{content:'';position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--text-sec);transition:transform .2s,background .2s}
+.tpill.on::after{transform:translateX(14px);background:#fff}
+#drop-zone{
+  border:1px dashed var(--border-hi);border-radius:6px;padding:16px;
+  text-align:center;cursor:pointer;transition:all .2s;background:var(--bg-deep);
+  font-family:var(--font-mono);font-size:11px;color:var(--text-sec);
+}
+#drop-zone:hover,#drop-zone.drag-over{border-color:var(--accent);background:rgba(0,212,255,.05);color:var(--accent)}
+#file-input{display:none}
+.ubtn{
+  display:block;width:100%;margin-top:8px;padding:6px;
+  border:1px solid var(--border);background:var(--bg-deep);color:var(--text-sec);
+  font-family:var(--font-mono);font-size:10px;letter-spacing:1px;
+  cursor:pointer;border-radius:3px;transition:all .2s;
+}
+.ubtn:hover{border-color:var(--accent);color:var(--accent)}
+#activity-log{flex:1;overflow-y:auto;padding:10px 16px;font-family:var(--font-mono);font-size:10px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.log-entry{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(26,58,82,.3);animation:fadeIn .4s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.log-time{color:var(--text-dim);white-space:nowrap}
+.log-type{min-width:52px}
+.log-msg{color:var(--text-sec);flex:1}
+
+/* MAP */
+#map-wrapper{grid-column:2;grid-row:3;position:relative;background:var(--bg-deep);overflow:hidden}
+#map{width:100%;height:100%}
+.map-overlay{position:absolute;z-index:1000;background:rgba(9,21,32,.92);border:1px solid var(--border);border-radius:4px;backdrop-filter:blur(4px)}
+#map-controls{top:12px;left:12px;padding:8px 12px;display:flex;gap:8px;align-items:center}
+#map-controls span{font-family:var(--font-mono);font-size:10px;color:var(--text-sec);letter-spacing:2px}
+.ctrl-btn{padding:4px 10px;border:1px solid var(--border);background:transparent;color:var(--text-sec);font-family:var(--font-mono);font-size:10px;cursor:pointer;border-radius:2px;transition:all .15s}
+.ctrl-btn:hover{border-color:var(--accent);color:var(--accent)}
+.ctrl-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.1)}
+#legend{top:12px;right:12px;padding:10px 14px}
+.leg-row{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:10px;color:var(--text-sec);margin-bottom:5px}
+.leg-dot{width:8px;height:8px;border-radius:50%}
+#node-count{bottom:12px;left:12px;padding:6px 14px;font-family:var(--font-mono);font-size:11px;color:var(--text-sec)}
+#coord-display{bottom:12px;right:12px;padding:6px 14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);min-width:200px;text-align:right}
+#map-wrapper::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,.01) 2px,rgba(0,212,255,.01) 4px);pointer-events:none;z-index:999}
+
+/* HOVER POPUP */
+#hover-popup{
+  display:none;position:absolute;z-index:2000;
+  background:var(--bg-card);border:1px solid var(--border-hi);
+  border-radius:6px;width:240px;overflow:hidden;
+  box-shadow:0 0 20px rgba(0,212,255,.15);pointer-events:none;
+}
+#hover-popup.visible{display:block}
+.popup-img{width:100%;height:130px;object-fit:cover;display:block}
+.popup-body{padding:10px 12px}
+.popup-type{font-family:var(--font-mono);font-size:9px;letter-spacing:2px;margin-bottom:4px}
+.popup-title{font-family:var(--font-head);font-size:14px;font-weight:600;color:var(--text-pri);margin-bottom:6px}
+.popup-meta{font-family:var(--font-mono);font-size:9px;color:var(--text-sec);line-height:1.6}
+.pcorner{position:absolute;top:6px;right:6px;width:6px;height:6px;border-top:1px solid var(--accent);border-right:1px solid var(--accent)}
+.pcorner2{position:absolute;bottom:6px;left:6px;width:6px;height:6px;border-bottom:1px solid var(--accent);border-left:1px solid var(--accent)}
+
+/* MARKER */
+.custom-marker{width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;position:relative}
+.custom-marker::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;border:1px solid currentColor;opacity:.3;animation:ring 2s ease-out infinite}
+@keyframes ring{0%{transform:translate(-50%,-50%) scale(.5);opacity:.6}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
+.mk-osint{background:var(--osint);box-shadow:0 0 8px var(--osint);color:var(--osint)}
+.mk-humint{background:var(--humint);box-shadow:0 0 8px var(--humint);color:var(--humint)}
+.mk-imint{background:var(--imint);box-shadow:0 0 8px var(--imint);color:var(--imint)}
+
+/* RIGHT PANEL */
+#right-panel{
+  grid-column:3;grid-row:3;
+  background:var(--bg-panel);border-left:1px solid var(--border);
+  overflow-y:auto;display:flex;flex-direction:column;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 16px}
+.stat-card{background:var(--bg-deep);border:1px solid var(--border);border-radius:4px;padding:10px}
+.stat-label{font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-bottom:4px}
+.stat-value{font-family:var(--font-head);font-size:22px;font-weight:700}
+#node-detail{padding:14px 16px;flex:1}
+.detail-placeholder{text-align:center;padding:40px 20px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px}
+.detail-card{background:var(--bg-deep);border:1px solid var(--border-hi);border-radius:6px;overflow:hidden}
+.detail-img{width:100%;height:150px;object-fit:cover}
+.detail-body{padding:12px}
+.detail-type{font-family:var(--font-mono);font-size:9px;letter-spacing:2px;margin-bottom:4px}
+.detail-title{font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--text-pri);margin-bottom:8px}
+.detail-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:10px}
+.detail-row:last-child{border:none}
+.dr-key{color:var(--text-dim)}
+.dr-val{color:var(--text-sec);text-align:right;max-width:160px;word-break:break-all}
+.add-form{padding:14px 16px;border-top:1px solid var(--border)}
+.add-form input,.add-form select{
+  width:100%;background:var(--bg-deep);border:1px solid var(--border);
+  color:var(--text-pri);font-family:var(--font-mono);font-size:11px;
+  padding:6px 8px;border-radius:3px;margin-bottom:6px;outline:none;transition:border-color .2s;
+}
+.add-form input:focus,.add-form select:focus{border-color:var(--accent)}
+.add-form select option{background:var(--bg-deep)}
+.add-btn{
+  width:100%;padding:8px;background:rgba(0,212,255,.1);
+  border:1px solid var(--accent);color:var(--accent);
+  font-family:var(--font-mono);font-size:11px;letter-spacing:2px;
+  cursor:pointer;border-radius:3px;transition:all .2s;
+}
+.add-btn:hover{background:rgba(0,212,255,.2)}
+
+/* Leaflet */
+.leaflet-container{background:#040c14!important}
+.leaflet-control-zoom{display:none}
+.leaflet-bar{border:1px solid var(--border)!important;background:var(--bg-panel)!important}
+.leaflet-bar a{color:var(--text-sec)!important;background:var(--bg-panel)!important;border-bottom:1px solid var(--border)!important}
+.leaflet-bar a:hover{color:var(--accent)!important}
+
+/* EXPORT MODAL */
+#export-modal{
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(5,13,20,.92);align-items:center;justify-content:center;
+}
+#export-modal.open{display:flex}
+.modal-box{
+  background:var(--bg-panel);border:1px solid var(--border-hi);
+  border-radius:8px;width:560px;max-height:80vh;overflow:auto;
+  box-shadow:0 0 40px rgba(0,212,255,.15);
+}
+.modal-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 18px;border-bottom:1px solid var(--border);
+  font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--accent);letter-spacing:2px;
+}
+.modal-close{cursor:pointer;background:none;border:none;color:var(--text-sec);font-size:18px}
+.modal-close:hover{color:var(--danger)}
+.modal-body{padding:18px;font-family:var(--font-mono);font-size:11px}
+.report-section{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.report-section:last-child{border:none;margin:0;padding:0}
+.rs-title{color:var(--accent);font-size:10px;letter-spacing:2px;margin-bottom:8px}
+.rs-row{display:flex;justify-content:space-between;padding:3px 0;color:var(--text-sec)}
+.rs-row span:last-child{color:var(--text-pri)}
+.rs-node{padding:6px 8px;background:var(--bg-deep);border-radius:3px;margin-bottom:4px;border-left:2px solid}
+.modal-actions{display:flex;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
+.m-btn{flex:1;padding:8px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-sec);font-family:var(--font-mono);font-size:10px;letter-spacing:1px;cursor:pointer;border-radius:3px;transition:all .2s}
+.m-btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
+.m-btn:hover{border-color:var(--accent);color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="logo">STRATFUSE <span>INTELLIGENCE FUSION SYSTEM v2.4</span></div>
+  <div class="topbar-status">
+    <div class="ts-item"><div class="ts-dot"></div>OSINT STREAM: ACTIVE</div>
+    <div class="ts-item"><div class="ts-dot"></div>HUMINT FEED: SYNCED</div>
+    <div class="ts-item"><div class="ts-dot warn"></div>IMINT: PARTIAL</div>
+    <div class="ts-item"><div class="ts-dot"></div>LoRa GW: ONLINE</div>
+  </div>
+  <div id="clock">--:--:--</div>
+</div>
+
+<!-- THREAT BAR -->
+<div id="threat-bar">
+  <div class="tl-label">THREAT LEVEL</div>
+  <div class="tl-segments">
+    <div class="tl-seg" id="tl1"></div>
+    <div class="tl-seg" id="tl2"></div>
+    <div class="tl-seg" id="tl3"></div>
+    <div class="tl-seg" id="tl4"></div>
+    <div class="tl-seg" id="tl5"></div>
+  </div>
+  <div id="tl-name" style="font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:2px;min-width:90px;color:var(--text-dim)">MINIMAL</div>
+  <div id="tl-score" style="font-family:var(--font-mono);font-size:10px;color:var(--text-sec);min-width:70px">SCORE: 0</div>
+  <div class="vdiv"></div>
+  <div id="search-wrap">
+    <span id="search-icon">⌕</span>
+    <input type="text" id="search-input" placeholder="Search nodes — title, source, notes..." oninput="doSearch(this.value)">
+    <span id="search-count"></span>
+  </div>
+  <div class="cpills">
+    <button class="cpill on" onclick="setClassFilter('ALL',this)">ALL</button>
+    <button class="cpill" onclick="setClassFilter('UNCLASSIFIED',this)">UNCLAS</button>
+    <button class="cpill" onclick="setClassFilter('SECRET',this)">SECRET</button>
+    <button class="cpill" onclick="setClassFilter('TOP SECRET',this)">TS</button>
+  </div>
+  <div class="vdiv"></div>
+  <button id="export-btn" onclick="openExport()">⬇ EXPORT REPORT</button>
+</div>
+
+<!-- LEFT PANEL -->
+<div id="left-panel">
+  <div class="panel-section">
+    <div class="panel-label">Source Control</div>
+    <div class="source-toggle active" onclick="toggleSource('OSINT',this)">
+      <div class="src-info">
+        <div class="src-dot" style="background:var(--osint);box-shadow:0 0 6px var(--osint)"></div>
+        <span>OSINT</span>
+        <span class="src-count" id="cnt-OSINT">0 nodes</span>
+      </div>
+      <div class="tpill on" id="pill-OSINT"></div>
+    </div>
+    <div class="source-toggle active" onclick="toggleSource('HUMINT',this)">
+      <div class="src-info">
+        <div class="src-dot" style="background:var(--humint);box-shadow:0 0 6px var(--humint)"></div>
+        <span>HUMINT</span>
+        <span class="src-count" id="cnt-HUMINT">0 nodes</span>
+      </div>
+      <div class="tpill on" id="pill-HUMINT"></div>
+    </div>
+    <div class="source-toggle active" onclick="toggleSource('IMINT',this)">
+      <div class="src-info">
+        <div class="src-dot" style="background:var(--imint);box-shadow:0 0 6px var(--imint)"></div>
+        <span>IMINT</span>
+        <span class="src-count" id="cnt-IMINT">0 nodes</span>
+      </div>
+      <div class="tpill on" id="pill-IMINT"></div>
+    </div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-label">Data Ingestion</div>
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="dzDrop(event)">
+      <div style="font-size:22px;margin-bottom:6px">⬆</div>
+      <div>DROP CSV / JSON / IMG</div>
+      <div style="font-size:9px;margin-top:3px;color:var(--text-dim)">or click to browse</div>
+    </div>
+    <input type="file" id="file-input" multiple accept=".csv,.json,.jpg,.jpeg,.png" onchange="handleFiles(this.files)">
+    <button class="ubtn" onclick="simulateS3Pull()">[ PULL FROM S3 / MONGODB ]</button>
+    <button class="ubtn" onclick="loadSampleData()">[ LOAD SAMPLE INTEL DATA ]</button>
+  </div>
+  <div class="panel-section"><div class="panel-label">Activity Log</div></div>
+  <div id="activity-log"></div>
+</div>
+
+<!-- MAP -->
+<div id="map-wrapper">
+  <div id="map"></div>
+  <div class="map-overlay" id="map-controls">
+    <span>VIEW MODE</span>
+    <button class="ctrl-btn active" onclick="setFilter('all',this)">ALL</button>
+    <button class="ctrl-btn" onclick="setFilter('OSINT',this)">OSINT</button>
+    <button class="ctrl-btn" onclick="setFilter('HUMINT',this)">HUMINT</button>
+    <button class="ctrl-btn" onclick="setFilter('IMINT',this)">IMINT</button>
+  </div>
+  <div class="map-overlay" id="legend">
+    <div class="leg-row"><div class="leg-dot" style="background:var(--osint)"></div>OSINT NODE</div>
+    <div class="leg-row"><div class="leg-dot" style="background:var(--humint)"></div>HUMINT NODE</div>
+    <div class="leg-row"><div class="leg-dot" style="background:var(--imint)"></div>IMINT NODE</div>
+  </div>
+  <div class="map-overlay" id="node-count">NODES: 0 | VISIBLE: 0</div>
+  <div class="map-overlay" id="coord-display">LAT: — | LON: —</div>
+  <div id="hover-popup">
+    <div class="pcorner"></div><div class="pcorner2"></div>
+    <div id="popup-img-wrap"></div>
+    <div class="popup-body">
+      <div class="popup-type" id="popup-type"></div>
+      <div class="popup-title" id="popup-title"></div>
+      <div class="popup-meta" id="popup-meta"></div>
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="right-panel">
+  <div class="panel-section" style="padding-bottom:0"><div class="panel-label">Statistics</div></div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">TOTAL NODES</div><div class="stat-value" id="stat-total" style="color:var(--accent)">0</div></div>
+    <div class="stat-card"><div class="stat-label">OSINT</div><div class="stat-value" id="stat-osint" style="color:var(--osint)">0</div></div>
+    <div class="stat-card"><div class="stat-label">HUMINT</div><div class="stat-value" id="stat-humint" style="color:var(--humint)">0</div></div>
+    <div class="stat-card"><div class="stat-label">IMINT</div><div class="stat-value" id="stat-imint" style="color:var(--imint)">0</div></div>
+  </div>
+  <div class="panel-section"><div class="panel-label">Node Detail</div></div>
+  <div id="node-detail">
+    <div class="detail-placeholder">
+      <div style="font-size:20px;margin-bottom:8px">◎</div>
+      SELECT A NODE ON MAP<br>TO VIEW INTELLIGENCE DETAIL
+    </div>
+  </div>
+  <div class="add-form">
+    <div class="panel-label" style="margin-bottom:10px">Manual Entry</div>
+    <input type="text" id="f-title" placeholder="Node title / description">
+    <select id="f-type">
+      <option value="OSINT">OSINT — Open Source</option>
+      <option value="HUMINT">HUMINT — Human Intel</option>
+      <option value="IMINT">IMINT — Imagery Intel</option>
+    </select>
+    <input type="text" id="f-lat" placeholder="Latitude (e.g. 28.6139)">
+    <input type="text" id="f-lon" placeholder="Longitude (e.g. 77.2090)">
+    <input type="text" id="f-meta" placeholder="Source / classification / notes">
+    <button class="add-btn" onclick="addManualNode()">+ ADD INTELLIGENCE NODE</button>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<!-- EXPORT MODAL -->
+<div id="export-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      INTELLIGENCE FUSION REPORT
+      <button class="modal-close" onclick="closeExport()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="m-btn" onclick="closeExport()">CLOSE</button>
+      <button class="m-btn primary" onclick="window.print()">PRINT / SAVE PDF</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──
+var nodes=[], markers={}, map;
+var sourceState={OSINT:true,HUMINT:true,IMINT:true};
+var currentFilter='all', searchQuery='', classFilter='ALL';
+var currentThreat=0, hoveredNode=null;
+
+// ── CANVAS IMAGE ──
+function genImg(type,id){
+  var c=document.createElement('canvas'); c.width=320; c.height=160;
+  var x=c.getContext('2d');
+  var cols={OSINT:['#00d4ff','#001a22'],HUMINT:['#00ff99','#001a11'],IMINT:['#ff6b35','#1a0a00']};
+  var ac=cols[type]?cols[type][0]:'#00d4ff', bg=cols[type]?cols[type][1]:'#001a22';
+  x.fillStyle=bg; x.fillRect(0,0,320,160);
+  x.strokeStyle=ac+'22'; x.lineWidth=1;
+  for(var i=0;i<320;i+=20){x.beginPath();x.moveTo(i,0);x.lineTo(i,160);x.stroke()}
+  for(var j=0;j<160;j+=20){x.beginPath();x.moveTo(0,j);x.lineTo(320,j);x.stroke()}
+  if(type==='IMINT'){
+    x.strokeStyle=ac+'66'; x.lineWidth=1.5;
+    x.strokeRect(50,25,220,110); x.strokeRect(75,40,65,40); x.strokeRect(180,40,65,40); x.strokeRect(115,85,90,38);
+    x.strokeStyle=ac; x.lineWidth=1;
+    x.beginPath();x.moveTo(160,5);x.lineTo(160,155);x.stroke();
+    x.beginPath();x.moveTo(5,80);x.lineTo(315,80);x.stroke();
+    x.strokeRect(138,58,44,44);
+    x.fillStyle=ac; x.beginPath();x.arc(160,80,4,0,Math.PI*2);x.fill();
+    x.strokeStyle=ac; x.lineWidth=1.5; x.beginPath();x.arc(160,80,14,0,Math.PI*2);x.stroke();
+  } else if(type==='HUMINT'){
+    x.strokeStyle=ac+'88'; x.lineWidth=1.5;
+    for(var r=1;r<=5;r++){x.beginPath();x.arc(160,160,r*26,Math.PI,2*Math.PI);x.stroke()}
+    x.fillStyle=ac; x.beginPath();x.arc(160,158,5,0,Math.PI*2);x.fill();
+    x.fillStyle=ac+'cc';
+    [95,115,135,155,175].forEach(function(px,ii){x.fillRect(px,118-ii*11,13,ii*11+8)});
+  } else {
+    var pts=[[70,45],[155,35],[240,55],[55,105],[160,115],[260,95],[115,75],[205,85]];
+    x.strokeStyle=ac+'55'; x.lineWidth=1;
+    pts.forEach(function(a,ai){pts.forEach(function(b,bi){if(bi>ai&&Math.random()>.45){x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0],b[1]);x.stroke()}})});
+    pts.forEach(function(p,pi){
+      x.fillStyle=pi===4?ac:ac+'77';
+      x.beginPath();x.arc(p[0],p[1],pi===4?6:3,0,Math.PI*2);x.fill();
+    });
+  }
+  var g=x.createLinearGradient(0,0,0,160);
+  g.addColorStop(0,'transparent');g.addColorStop(.5,ac+'11');g.addColorStop(1,'transparent');
+  x.fillStyle=g; x.fillRect(0,0,320,160);
+  x.strokeStyle=ac; x.lineWidth=2;
+  [[0,0,1,1],[320,0,-1,1],[0,160,1,-1],[320,160,-1,-1]].forEach(function(v){
+    x.beginPath();x.moveTo(v[0]+v[2]*2,v[1]);x.lineTo(v[0]+v[2]*16,v[1]);x.stroke();
+    x.beginPath();x.moveTo(v[0],v[1]+v[3]*2);x.lineTo(v[0],v[1]+v[3]*16);x.stroke();
+  });
+  x.fillStyle=ac; x.font='bold 9px monospace';
+  x.fillText('['+type+' — '+id.toUpperCase()+']',8,152);
+  return c.toDataURL();
+}
+
+// ── SAMPLE DATA ──
+var RAW=[
+  {id:'n001',type:'OSINT',title:'Social Media Cluster — Karachi Port',lat:24.8607,lon:67.0011,source:'Twitter/Telegram OSINT',classification:'UNCLASSIFIED',confidence:87,time:'2024-01-15 06:22Z',notes:'Surge in encrypted comms detected'},
+  {id:'n002',type:'HUMINT',title:'Asset FALCON Report',lat:28.6139,lon:77.2090,source:'Field Asset FALCON-7',classification:'SECRET',confidence:94,time:'2024-01-15 08:10Z',notes:'Movement observed near logistics depot'},
+  {id:'n003',type:'IMINT',title:'SAT-IMG-0047 Airfield Activity',lat:33.6007,lon:73.0679,source:'SAT-PASS-117 / WorldView-3',classification:'TOP SECRET',confidence:99,time:'2024-01-15 09:45Z',notes:'3 unidentified aircraft — taxiway delta'},
+  {id:'n004',type:'OSINT',title:'Forum Activity — Kabul Node',lat:34.5553,lon:69.2075,source:'Dark Web Monitor',classification:'UNCLASSIFIED',confidence:62,time:'2024-01-15 10:00Z',notes:'Chatter referencing supply routes'},
+  {id:'n005',type:'HUMINT',title:'Asset RAVEN Field Report',lat:25.2048,lon:55.2708,source:'Field Asset RAVEN-3',classification:'SECRET',confidence:88,time:'2024-01-15 11:30Z',notes:'Financial transactions via hawala network'},
+  {id:'n006',type:'IMINT',title:'SAT-IMG-0051 Port Surveillance',lat:22.3072,lon:70.8022,source:'SAT-PASS-119',classification:'SECRET',confidence:95,time:'2024-01-15 12:00Z',notes:'Unusual cargo transfer — 4 vessels'},
+  {id:'n007',type:'OSINT',title:'News Aggregation — Mumbai',lat:19.0760,lon:72.8777,source:'Reuters/AP Aggregator',classification:'UNCLASSIFIED',confidence:78,time:'2024-01-15 13:15Z',notes:'Protest activity near financial district'},
+  {id:'n008',type:'HUMINT',title:'SIGINT Cross-Reference — Delhi',lat:28.7041,lon:77.1025,source:'SIGINT/HUMINT Fusion',classification:'TOP SECRET',confidence:91,time:'2024-01-15 14:00Z',notes:'Voice intercept corroborated by field asset'},
+  {id:'n009',type:'IMINT',title:'SAT-IMG-0055 Border Crossing',lat:29.3789,lon:71.6752,source:'SAT-PASS-120 / Pleiades',classification:'SECRET',confidence:97,time:'2024-01-15 14:45Z',notes:'Vehicle convoy — 12 units heading north'},
+  {id:'n010',type:'OSINT',title:'Geospatial Blog Analysis — Lahore',lat:31.5204,lon:74.3587,source:'GEOINT OSINT Tool',classification:'UNCLASSIFIED',confidence:55,time:'2024-01-15 15:30Z',notes:'Geotagged posts indicate gathering of interest'},
+];
+var SAMPLE_DATA=RAW.map(function(n){return Object.assign({},n,{image:genImg(n.type,n.id)})});
+
+// ── MAP ──
+function initMap(){
+  map=L.map('map',{zoomControl:false,attributionControl:false}).setView([28,70],5);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+  L.control.zoom({position:'bottomleft'}).addTo(map);
+  map.on('mousemove',function(e){
+    document.getElementById('coord-display').textContent='LAT: '+e.latlng.lat.toFixed(4)+' | LON: '+e.latlng.lng.toFixed(4);
+  });
+  map.on('click',hidePopup);
+}
+
+function colorFor(t){return t==='OSINT'?'#00d4ff':t==='HUMINT'?'#00ff99':'#ff6b35'}
+
+function createMarker(node){
+  var color=colorFor(node.type);
+  var cls='custom-marker mk-'+node.type.toLowerCase();
+  var icon=L.divIcon({html:'<div class="'+cls+'" style="color:'+color+'"></div>',className:'',iconSize:[12,12],iconAnchor:[6,6]});
+  var m=L.marker([node.lat,node.lon],{icon:icon}).addTo(map);
+  m.on('mouseover',function(e){showPopup(node,e.originalEvent.clientX,e.originalEvent.clientY)});
+  m.on('mouseout',function(){hoveredNode=null;setTimeout(hidePopup,120)});
+  m.on('click',function(e){L.DomEvent.stopPropagation(e);selectNode(node)});
+  markers[node.id]=m;
+}
+
+function showPopup(node,x,y){
+  hoveredNode=node;
+  var color=colorFor(node.type);
+  document.getElementById('popup-type').textContent='[ '+node.type+' ]';
+  document.getElementById('popup-type').style.color=color;
+  document.getElementById('popup-title').textContent=node.title;
+  document.getElementById('popup-meta').innerHTML='SOURCE: '+node.source+'<br>TIME: '+node.time+'<br>CONFIDENCE: '+node.confidence+'%<br>CLASS: '+node.classification;
+  var w=document.getElementById('popup-img-wrap');
+  w.innerHTML=node.image?'<img class="popup-img" src="'+node.image+'">'
+    :'<div style="width:100%;height:130px;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:'+color+'">[ '+node.type+' — NO VISUAL ]</div>';
+  var popup=document.getElementById('hover-popup');
+  var rect=document.getElementById('map-wrapper').getBoundingClientRect();
+  var px=x-rect.left+16, py=y-rect.top-60;
+  if(px+250>rect.width) px=x-rect.left-260;
+  if(py+300>rect.height) py=y-rect.top-290;
+  popup.style.left=px+'px'; popup.style.top=py+'px';
+  popup.classList.add('visible');
+}
+
+function hidePopup(){document.getElementById('hover-popup').classList.remove('visible')}
+
+function selectNode(node){
+  var color=colorFor(node.type);
+  var imgBlock=node.image?'<img class="detail-img" src="'+node.image+'">'
+    :'<div style="width:100%;height:80px;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:'+color+'">[ '+node.type+' — NO IMAGERY ]</div>';
+  var confColor=node.confidence>80?'var(--accent2)':node.confidence>60?'var(--warn)':'var(--danger)';
+  document.getElementById('node-detail').innerHTML=
+    '<div class="detail-card" style="border-color:'+color+'44">'+imgBlock+
+    '<div class="detail-body">'+
+    '<div class="detail-type" style="color:'+color+'">[ '+node.type+' INTELLIGENCE ]</div>'+
+    '<div class="detail-title">'+node.title+'</div>'+
+    '<div class="detail-row"><span class="dr-key">NODE ID</span><span class="dr-val">'+node.id.toUpperCase()+'</span></div>'+
+    '<div class="detail-row"><span class="dr-key">SOURCE</span><span class="dr-val">'+node.source+'</span></div>'+
+    '<div class="detail-row"><span class="dr-key">TIMESTAMP</span><span class="dr-val">'+node.time+'</span></div>'+
+    '<div class="detail-row"><span class="dr-key">COORDS</span><span class="dr-val">'+node.lat.toFixed(4)+', '+node.lon.toFixed(4)+'</span></div>'+
+    '<div class="detail-row"><span class="dr-key">CONFIDENCE</span><span class="dr-val" style="color:'+confColor+'">&#9646; '+node.confidence+'%</span></div>'+
+    '<div class="detail-row"><span class="dr-key">CLASS</span><span class="dr-val">'+node.classification+'</span></div>'+
+    '<div class="detail-row"><span class="dr-key">NOTES</span><span class="dr-val">'+node.notes+'</span></div>'+
+    '</div></div>';
+}
+
+// ── NODE MANAGEMENT ──
+function addNode(node,silent){
+  nodes.push(node);
+  createMarker(node);
+  updateAll();
+  if(!silent) addLog(node.type,'Node added: '+node.title.substring(0,28));
+}
+
+function addManualNode(){
+  var title=document.getElementById('f-title').value.trim();
+  var type=document.getElementById('f-type').value;
+  var lat=parseFloat(document.getElementById('f-lat').value);
+  var lon=parseFloat(document.getElementById('f-lon').value);
+  var meta=document.getElementById('f-meta').value.trim();
+  if(!title||isNaN(lat)||isNaN(lon)){addLog('WARN','Invalid — title, lat, lon required');return}
+  var id='n'+Date.now();
+  var node={id:id,type:type,title:title,lat:lat,lon:lon,source:meta||'Manual Entry',
+    classification:'UNCLASSIFIED',confidence:70,
+    time:new Date().toISOString().replace('T',' ').substring(0,16)+'Z',
+    notes:'Manually ingested node',image:genImg(type,id)};
+  addNode(node);
+  ['f-title','f-lat','f-lon','f-meta'].forEach(function(id){document.getElementById(id).value=''});
+  map.flyTo([lat,lon],8,{duration:1});
+}
+
+// ── SOURCE TOGGLE ──
+function toggleSource(src,el){
+  sourceState[src]=!sourceState[src];
+  var pill=document.getElementById('pill-'+src);
+  if(sourceState[src]){pill.classList.add('on');el.classList.add('active')}
+  else{pill.classList.remove('on');el.classList.remove('active')}
+  refreshMarkers();
+}
+
+// ── FILTER ──
+function setFilter(f,btn){
+  currentFilter=f;
+  document.querySelectorAll('.ctrl-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  refreshMarkers();
+}
+
+function nodeVisible(n){
+  if(!sourceState[n.type]) return false;
+  if(currentFilter!=='all'&&currentFilter!==n.type) return false;
+  if(classFilter!=='ALL'&&n.classification!==classFilter) return false;
+  if(searchQuery&&!(n.title+n.source+n.notes+n.type+n.id).toLowerCase().includes(searchQuery)) return false;
+  return true;
+}
+
+function refreshMarkers(){
+  var vis=0;
+  nodes.forEach(function(n){
+    var m=markers[n.id]; if(!m) return;
+    if(nodeVisible(n)){map.addLayer(m);vis++}else{map.removeLayer(m)}
+  });
+  document.getElementById('node-count').textContent='NODES: '+nodes.length+' | VISIBLE: '+vis;
+}
+
+function updateAll(){
+  ['OSINT','HUMINT','IMINT'].forEach(function(t){
+    document.getElementById('cnt-'+t).textContent=nodes.filter(function(n){return n.type===t}).length+' nodes';
+  });
+  document.getElementById('stat-total').textContent=nodes.length;
+  document.getElementById('stat-osint').textContent=nodes.filter(function(n){return n.type==='OSINT'}).length;
+  document.getElementById('stat-humint').textContent=nodes.filter(function(n){return n.type==='HUMINT'}).length;
+  document.getElementById('stat-imint').textContent=nodes.filter(function(n){return n.type==='IMINT'}).length;
+  refreshMarkers();
+  calcThreat();
+}
+
+// ── THREAT LEVEL ──
+var TL_NAMES=['MINIMAL','LOW','GUARDED','ELEVATED','HIGH','CRITICAL'];
+var TL_COLORS=['var(--text-dim)','#00d4ff','#00ff99','#ffc837','#ff6b35','#ff3b5c'];
+var TL_CLS=['','L1','L2','L3','L4','L5'];
+
+function calcThreat(){
+  if(nodes.length===0){renderThreat(0,0);return}
+  var score=0;
+  nodes.forEach(function(n){
+    score+=(n.classification==='TOP SECRET'?3:n.classification==='SECRET'?2:1);
+    score+=(n.confidence>90?2:n.confidence>75?1:0);
+    if(n.type==='IMINT') score+=1;
+  });
+  var lvl=Math.min(Math.floor(Math.min(score,60)/60*5)+1,5);
+  renderThreat(lvl,score);
+}
+
+function renderThreat(lvl,score){
+  currentThreat=lvl;
+  document.getElementById('tl-name').textContent=TL_NAMES[lvl];
+  document.getElementById('tl-name').style.color=TL_COLORS[lvl];
+  document.getElementById('tl-score').textContent='SCORE: '+score;
+  for(var i=1;i<=5;i++){
+    var seg=document.getElementById('tl'+i);
+    seg.className='tl-seg'+(i<=lvl?' '+TL_CLS[lvl]:'');
+  }
+}
+
+// ── SEARCH ──
+function doSearch(q){
+  searchQuery=q.toLowerCase();
+  refreshMarkers();
+  var m=nodes.filter(nodeVisible).length;
+  document.getElementById('search-count').textContent=q?(m+' match'+(m!==1?'es':'')):'';
+}
+
+function setClassFilter(cls,btn){
+  classFilter=cls;
+  document.querySelectorAll('.cpill').forEach(function(b){b.classList.remove('on')});
+  btn.classList.add('on');
+  refreshMarkers();
+}
+
+// ── EXPORT ──
+function openExport(){
+  var ts=new Date().toISOString().replace('T',' ').substring(0,19)+'Z';
+  var avgConf=nodes.length?Math.round(nodes.reduce(function(a,n){return a+n.confidence},0)/nodes.length):0;
+  var ts_count=nodes.filter(function(n){return n.classification==='TOP SECRET'}).length;
+  var overallCls=ts_count>0?'TOP SECRET':nodes.some(function(n){return n.classification==='SECRET'})?'SECRET':'UNCLASSIFIED';
+  var tname=TL_NAMES[currentThreat], tcolor=TL_COLORS[currentThreat];
+  var nodesHtml=nodes.map(function(n){
+    var c=colorFor(n.type);
+    return '<div class="rs-node" style="border-color:'+c+'">'+
+      '<div style="color:'+c+';font-size:9px;letter-spacing:1px">['+n.type+'] '+n.id.toUpperCase()+'</div>'+
+      '<div style="color:#e0f4ff;margin:2px 0;font-size:12px">'+n.title+'</div>'+
+      '<div style="color:#6a9ab8;font-size:9px">SRC: '+n.source+' | CONF: '+n.confidence+'% | CLASS: '+n.classification+' | '+n.time+'</div>'+
+      '<div style="color:#6a9ab8;font-size:9px;margin-top:2px">COORDS: '+n.lat.toFixed(4)+', '+n.lon.toFixed(4)+' | '+n.notes+'</div>'+
+      '</div>';
+  }).join('');
+  document.getElementById('modal-body').innerHTML=
+    '<div class="report-section">'+
+    '<div class="rs-title">REPORT METADATA</div>'+
+    '<div class="rs-row"><span>GENERATED</span><span>'+ts+'</span></div>'+
+    '<div class="rs-row"><span>OVERALL CLASSIFICATION</span><span style="color:var(--danger)">'+overallCls+'</span></div>'+
+    '<div class="rs-row"><span>ANALYST SYSTEM</span><span>STRATFUSE v2.4</span></div>'+
+    '<div class="rs-row"><span>THREAT ASSESSMENT</span><span style="color:'+tcolor+'">'+tname+'</span></div>'+
+    '</div>'+
+    '<div class="report-section">'+
+    '<div class="rs-title">INTELLIGENCE SUMMARY</div>'+
+    '<div class="rs-row"><span>TOTAL NODES</span><span>'+nodes.length+'</span></div>'+
+    '<div class="rs-row"><span>OSINT</span><span style="color:#00d4ff">'+nodes.filter(function(n){return n.type==='OSINT'}).length+'</span></div>'+
+    '<div class="rs-row"><span>HUMINT</span><span style="color:#00ff99">'+nodes.filter(function(n){return n.type==='HUMINT'}).length+'</span></div>'+
+    '<div class="rs-row"><span>IMINT</span><span style="color:#ff6b35">'+nodes.filter(function(n){return n.type==='IMINT'}).length+'</span></div>'+
+    '<div class="rs-row"><span>AVG CONFIDENCE</span><span>'+avgConf+'%</span></div>'+
+    '<div class="rs-row"><span>TOP SECRET NODES</span><span style="color:var(--danger)">'+ts_count+'</span></div>'+
+    '</div>'+
+    '<div class="report-section">'+
+    '<div class="rs-title">ALL INTELLIGENCE NODES ('+nodes.length+')</div>'+
+    (nodesHtml||'<div style="color:var(--text-dim);padding:10px 0">No nodes ingested yet.</div>')+
+    '</div>';
+  document.getElementById('export-modal').classList.add('open');
+}
+function closeExport(){document.getElementById('export-modal').classList.remove('open')}
+
+// ── LOAD SAMPLE ──
+function loadSampleData(){
+  addLog('SYS','Loading sample intelligence dataset...');
+  var i=0;
+  var iv=setInterval(function(){
+    if(i>=SAMPLE_DATA.length){clearInterval(iv);addLog('SYS','Dataset loaded — 10 nodes ingested');return}
+    addNode(Object.assign({},SAMPLE_DATA[i]),true);
+    addLog(SAMPLE_DATA[i].type,'Ingested: '+SAMPLE_DATA[i].title.substring(0,30));
+    i++;
+  },250);
+}
+
+// ── S3 PULL ──
+function simulateS3Pull(){
+  addLog('SYS','Connecting to S3/MongoDB endpoint...');
+  setTimeout(function(){addLog('SYS','Auth handshake complete')},600);
+  setTimeout(function(){addLog('OSINT','Pulling OSINT collection from MongoDB...')},1200);
+  setTimeout(function(){
+    var id1='s3a'+Date.now(), id2='s3b'+Date.now();
+    var pulled=[
+      {id:id1,type:'OSINT',title:'SIGINT Intercept — Arabian Sea',lat:20.5937,lon:62.7082,source:'MongoDB:osint_db/intercepts',classification:'SECRET',confidence:79,time:new Date().toISOString().replace('T',' ').substring(0,16)+'Z',notes:'Encrypted HF transmission logged',image:genImg('OSINT',id1)},
+      {id:id2,type:'OSINT',title:'Social Cluster — Oman Node',lat:22.5,lon:57.3,source:'AWS S3:osint-bucket/social',classification:'UNCLASSIFIED',confidence:65,time:new Date().toISOString().replace('T',' ').substring(0,16)+'Z',notes:'Platform activity spike detected',image:genImg('OSINT',id2)},
+    ];
+    pulled.forEach(function(n){addNode(n)});
+    addLog('SYS','S3/MongoDB pull complete — 2 records ingested');
+    map.flyTo([21,60],6,{duration:1.5});
+  },2000);
+}
+
+// ── FILE INGESTION ──
+function handleFiles(files){
+  Array.from(files).forEach(function(file){
+    var ext=file.name.split('.').pop().toLowerCase();
+    addLog('INGEST','Processing: '+file.name);
+    if(ext==='json'){
+      var r=new FileReader();
+      r.onload=function(e){
+        try{
+          var data=JSON.parse(e.target.result);
+          var arr=Array.isArray(data)?data:[data];
+          arr.forEach(function(item){
+            if(item.lat&&item.lon){
+              var id='n'+Date.now()+Math.random();
+              var t=(item.type||'OSINT').toUpperCase();
+              addNode({id:id,type:t,title:item.title||item.name||'JSON Node',
+                lat:parseFloat(item.lat),lon:parseFloat(item.lon),
+                source:file.name,classification:item.classification||'UNCLASSIFIED',
+                confidence:item.confidence||70,time:item.time||new Date().toISOString(),
+                notes:item.notes||item.description||'',image:genImg(t,id)});
+            }
+          });
+        }catch(err){addLog('ERR','JSON parse failed: '+file.name)}
+      };
+      r.readAsText(file);
+    } else if(ext==='csv'){
+      var r2=new FileReader();
+      r2.onload=function(e){
+        var lines=e.target.result.split('\n').filter(Boolean);
+        var headers=lines[0].split(',').map(function(h){return h.trim().toLowerCase()});
+        lines.slice(1).forEach(function(line){
+          var vals=line.split(','); var obj={};
+          headers.forEach(function(h,i){obj[h]=(vals[i]||'').trim()});
+          if(obj.lat&&obj.lon){
+            var id='n'+Date.now()+Math.random();
+            var t=(obj.type||'HUMINT').toUpperCase();
+            addNode({id:id,type:t,title:obj.title||obj.name||'CSV Node',
+              lat:parseFloat(obj.lat),lon:parseFloat(obj.lon),
+              source:file.name,classification:obj.classification||'UNCLASSIFIED',
+              confidence:parseInt(obj.confidence)||70,time:obj.time||new Date().toISOString(),
+              notes:obj.notes||obj.description||'',image:genImg(t,id)});
+          }
+        });
+        addLog('SYS','CSV parsed: '+file.name);
+      };
+      r2.readAsText(file);
+    } else if(['jpg','jpeg','png'].includes(ext)){
+      var r3=new FileReader();
+      r3.onload=function(e){
+        var lat=28+(Math.random()-.5)*20, lon=70+(Math.random()-.5)*20;
+        var id='n'+Date.now();
+        addNode({id:id,type:'IMINT',title:'IMINT: '+file.name,
+          lat:lat,lon:lon,source:'Local Upload',classification:'UNCLASSIFIED',
+          confidence:85,time:new Date().toISOString().replace('T',' ').substring(0,16)+'Z',
+          notes:'Imagery uploaded manually',image:e.target.result});
+        addLog('IMINT','Imagery ingested: '+file.name);
+        map.flyTo([lat,lon],8,{duration:1});
+      };
+      r3.readAsDataURL(file);
+    }
+  });
+}
+
+// ── DRAG DROP ──
+function dzOver(e){e.preventDefault();document.getElementById('drop-zone').classList.add('drag-over')}
+function dzLeave(e){document.getElementById('drop-zone').classList.remove('drag-over')}
+function dzDrop(e){e.preventDefault();document.getElementById('drop-zone').classList.remove('drag-over');handleFiles(e.dataTransfer.files)}
+
+// ── LOG ──
+function addLog(type,msg){
+  var log=document.getElementById('activity-log');
+  var color=type==='OSINT'?'var(--osint)':type==='HUMINT'?'var(--humint)':type==='IMINT'?'var(--imint)':type==='ERR'?'var(--danger)':type==='WARN'?'var(--warn)':'var(--text-dim)';
+  var now=new Date();
+  var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+  var el=document.createElement('div'); el.className='log-entry';
+  el.innerHTML='<span class="log-time">'+ts+'</span><span class="log-type" style="color:'+color+'">['+type+']</span><span class="log-msg">'+msg+'</span>';
+  log.insertBefore(el,log.firstChild);
+  if(log.children.length>60) log.removeChild(log.lastChild);
+}
+
+// ── CLOCK ──
+function tick(){
+  var n=new Date();
+  document.getElementById('clock').textContent=n.getUTCHours().toString().padStart(2,'0')+':'+n.getUTCMinutes().toString().padStart(2,'0')+':'+n.getUTCSeconds().toString().padStart(2,'0')+'Z';
+}
+setInterval(tick,1000); tick();
+
+// ── BOOT ──
+initMap();
+addLog('SYS','STRATFUSE Intelligence Fusion System initialized');
+addLog('SYS','Awaiting data ingestion — drag-drop or use buttons below');
+addLog('SYS','Click [ LOAD SAMPLE INTEL DATA ] to populate the map');
+</script>
+</body>
+</html>
